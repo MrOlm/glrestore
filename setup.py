@@ -18,6 +18,7 @@ setup(name='glrestore',
       install_requires=[
           'awscli',
           'boto3',
+          'awswrangler'
       ],
       entry_points={
             'console_scripts': [
