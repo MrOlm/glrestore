@@ -7,7 +7,7 @@ from glrestore.version import __version__
 
 setup(name='glrestore',
       version=__version__,
-      description='Calculation of strain-level metrics',
+      description='Easily restore objects from AWS glacier from the command line using python',
       url='https://github.com/MrOlm/glrestore',
       author='Matthew Olm',
       author_email='mattolm@gmail.com',

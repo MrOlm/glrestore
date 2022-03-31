@@ -1,4 +1,5 @@
 import boto3
+import logging
 
 def get_boto3_client(**kwargs):
     """
@@ -36,16 +37,66 @@ def get_object_storage_class(s3_loc, **kwargs):
     bucket, key = get_bucket_key(s3_loc)
     re = client.head_object(Bucket=bucket, Key=key)
 
-    # If STANDARD, StorageClass wont be in this
+    # Get the storage class. If STANDARD, StorageClass won't be in this
     if ('ResponseMetadata' in re) & ('StorageClass' not in re):
         sclass = 'STANDARD'
     else:
         sclass = re['StorageClass']
 
-    return sclass
+    # Get the restore status. If not restored, 'Restore' won't be in this
+    if 'Restore' not in re:
+        rclass = False
+    else:
+        r = re['Restore']
+        active_restore = 'ongoing-request="true"' in r
+        # if not active_restore:
+        #     expiry_date = r.split('expiry-date=\"')[1]
 
-def object_glacerized(s3_loc, **kwargs):
+        if active_restore:
+            rclass = 'restoring'
+        else:
+            rclass = 'restored'
+
+    return sclass, rclass
+
+def glacier_status(s3_loc, **kwargs):
     """
     Check if an object is in aws s3 glacier, and if so, return True. Else, return False.
     """
-    return get_object_storage_class(s3_loc, **kwargs) == 'GLACIER'
+    sclass, rclass = get_object_storage_class(s3_loc, **kwargs)
+
+    # Object is not in glacier at all
+    if sclass != 'GLACIER':
+        return 'no-glacier'
+
+    # Object is in glacier with no active restored
+    elif rclass is False:
+        return 'glacier-no-restore'
+
+    # Object is restored in glacier
+    elif rclass == 'restored':
+        return 'glacier-restored'
+
+    # Object is being actively restored
+    else:
+        assert rclass == 'restoring'
+        return 'glacier-restoring'
+
+def restore_file(f, **kwargs):
+    """
+    Restore "f" using the parameters in kwargs
+    """
+    client = get_boto3_client(**kwargs)
+
+    obucket, okey = get_bucket_key(f)
+
+    response = client.restore_object(
+        Bucket=obucket,
+        Key=okey,
+        RestoreRequest={
+            'Days': kwargs.get('days'),
+            'GlacierJobParameters': {
+             'Tier': str(kwargs.get('speed'))}})
+
+    if kwargs.get('debug', False):
+        logging.debug(response)
