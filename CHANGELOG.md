@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project (attempts to) adhere to [Semantic Versioning](http://semver.org/).
 
+## [0.2.1] - 2022-04-18
+- Dont try to restore things that cant be restored
+
 ## [0.2.0] - 2022-03-30
 - Working functionality
 - Tests working
