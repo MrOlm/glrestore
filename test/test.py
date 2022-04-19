@@ -64,7 +64,7 @@ def run_glrestore(cmd):
         glrestore.glrestore.main()
 
 def upload_glacierized_file():
-    cmd = "aws s3 cp --profile sonn ~/Programs/inStrain/test/test_data/N5_271_010G1_scaffold_min1000.fa s3://sonn-current/users/mattolm/testing_house/glrestore/N5_271_010G1_scaffold_min1000.fa --storage-class GLACIER"
+    cmd = "aws s3 cp ~/Programs/inStrain/test/test_data/N5_271_010G1_scaffold_min1000.fa s3://sonn-current/users/mattolm/testing_house/glrestore/N5_271_010G1_scaffold_min1000.fa --storage-class GLACIER"
     subprocess.call(cmd, shell=True)
 
 """
@@ -102,11 +102,11 @@ def test_glrestore_1(BTO):
     upload_glacierized_file()
 
     # Make sure this file starts off glacierized
-    assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc, profile='sonn') == 'glacier-no-restore'
+    assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-no-restore'
 
-    cmd = f"glrestore -f {BTO.glacerized_file_loc} --profile sonn --debug"
+    cmd = f"glrestore -f {BTO.glacerized_file_loc} --debug"
     run_glrestore(cmd)
 
     # Make sure this file is now being restored
-    assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc, profile='sonn') == 'glacier-restoring'
+    assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-restoring'
 

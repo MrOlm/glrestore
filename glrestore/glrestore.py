@@ -88,7 +88,8 @@ class RestoreController(object):
             status = glrestore.s3_utils.glacier_status(f)
             if status != 'glacier-no-restore':
                 logging.info(f"{f} is {status}; skipping")
-            logging.debug(f"Restoring {f}")
+                continue
+            logging.debug(f"Restoring {f}; status is {status}")
             glrestore.s3_utils.restore_file(f, **self.kwargs)
 
         logging.info(f"Restore commands finished launching")
