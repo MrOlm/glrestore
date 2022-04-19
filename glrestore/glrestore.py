@@ -85,10 +85,13 @@ class RestoreController(object):
         files_to_restore = self.files_to_restore
 
         for f in files_to_restore:
+
             status = glrestore.s3_utils.glacier_status(f)
-            if status != 'glacier-no-restore':
+
+            if status not in ['glacier-no-restore', 'deep-glacier-no-restore']:
                 logging.info(f"{f} is {status}; skipping")
                 continue
+
             logging.debug(f"Restoring {f}; status is {status}")
             glrestore.s3_utils.restore_file(f, **self.kwargs)
 

@@ -66,12 +66,18 @@ def glacier_status(s3_loc, **kwargs):
     sclass, rclass = get_object_storage_class(s3_loc, **kwargs)
 
     # Object is not in glacier at all
-    if sclass != 'GLACIER':
+    if sclass not in ['GLACIER', 'DEEP_ARCHIVE']:
         return 'no-glacier'
 
     # Object is in glacier with no active restored
     elif rclass is False:
-        return 'glacier-no-restore'
+        if sclass == 'GLACIER':
+            return 'glacier-no-restore'
+        elif sclass == 'DEEP_ARCHIVE':
+            return 'deep-glacier-no-restore'
+        else:
+            print(f"WHAT!! {sclass}")
+            assert False, sclass
 
     # Object is restored in glacier
     elif rclass == 'restored':
