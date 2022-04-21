@@ -11,6 +11,7 @@ __license__ = "MIT"
 import os
 import sys
 import boto3
+import time
 import copy
 import argparse
 import logging
@@ -40,17 +41,19 @@ class RestoreController(object):
         The main controller for restore
         """
         self.parse_arguments()
-        debug = self.kwargs.get('debug', False)
 
         logging.debug("Figuring out what to restore")
         self.get_files_to_restore()
-        logging.info(f"Identified {len(self.files_to_restore)} files to restore")
-        if debug:
-            for f in self.files_to_restore:
-                logging.debug(f)
+
+        logging.debug("Classifying objects to restore")
+        self.classify_objects()
+
+        logging.debug("Print status")
+        self.print_status()
 
         logging.debug("Restoring files")
         self.restore_files()
+
 
     def parse_arguments(self):
         """
@@ -78,21 +81,93 @@ class RestoreController(object):
 
         self.files_to_restore = FILES_TO_RESTORE
 
+    def classify_objects(self):
+        """
+        Return a table listing "file", "size", and "status"
+        """
+        # Run the calculation
+        self.file_classifications = glrestore.s3_utils.classify_glacier_objects(self.files_to_restore)
+
+    def print_status(self):
+        """
+        Print status and estimated costs
+        """
+        debug = self.kwargs.get('debug', False)
+
+        cdb = self.file_classifications
+        logging.info(f"Identified {len(cdb)} files")
+
+        tdb = cdb[cdb['restore_status'] != False]
+        logging.info(f"Of these, {len(tdb)} are being actively restored or are already restored")
+
+        tdb = cdb[~cdb['storage_class'].isin(['GLACIER', 'DEEP_ARCHIVE'])]
+        logging.info(f"Of these, {len(tdb)} are not in glacier")
+
+        fcdb = cdb[(cdb['restore_status'] == False) & (cdb['storage_class'].isin(['GLACIER', 'DEEP_ARCHIVE']))]
+        logging.info(f"Restoring the remaining {len(fcdb)} objects will cost the following:")
+
+        self.display_restore_costs(fcdb)
+
+        self.files_to_restore_filtered = fcdb['file'].tolist()
+
+        if debug:
+            for f in fcdb['file'].tolist():
+                logging.debug(f)
+
+    def display_restore_costs(self, fcdb):
+        """
+        Print how much this is going to cost
+
+        NOTE- YOURE TREATING EVERYTHING AS IF IT'S BEING RESTORED FROM DEEP ARCHIVE; the "standard" is actully a bit cheaper when restoring from flexible
+        """
+        S3_COST_PER_GB_PER_MONTH = 0.022
+
+        TIER2REQUEST2COST = {
+            'Expedited':10,
+            'Standard':0.10,
+            'Bulk':0.025
+        }
+        TIER2REQUEST2SIZE_COST = {
+            'Expedited': 0.03,
+            'Standard': 0.02,
+            'Bulk': 0.0025
+        }
+
+        # 0) Calculate the size and number of objects to restore
+        num_obs = len(fcdb)
+        size_obs = sum(fcdb['size_bytes']) / 1e9
+
+        # 1) Calculate the cost for the extra storage
+        storage_cost = size_obs * self.kwargs.get('days')
+
+        # 2) Calculate the cost for the retrival costs
+        t2cs = {}
+        for tier in ['Expedited', 'Standard', 'Bulk']:
+            t2cs[tier] = [(num_obs / 1000) * TIER2REQUEST2COST[tier], size_obs * TIER2REQUEST2SIZE_COST[tier]]
+
+        # Display this info
+        msg = "\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n"
+        msg += f"It will cost ${storage_cost:.2f} to restore the {size_obs:.3f}GB of data for {self.kwargs.get('days')} days\n"
+
+        msg += '\n'
+        msg += f"Additionally it will cost the following to restore {num_obs} objects totalling {size_obs:.2f}GB:\n"
+        for t, d in t2cs.items():
+            msg += f"{t}: ${d[0]:.2f} + ${d[1]:.2f}\n"
+        msg += "\n"
+        msg += f"You chose to restore at {self.kwargs.get('speed')} speed. Please quit the program now (ctrl + c) if you'd like to change that! I'll wait 5 seconds"
+        msg += "\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n"
+
+        logging.info(msg)
+        time.sleep(5)
+
     def restore_files(self):
         """
         Actually do the file restoring
         """
-        files_to_restore = self.files_to_restore
+        files_to_restore_filtered = self.files_to_restore
 
-        for f in files_to_restore:
+        for f in files_to_restore_filtered:
 
-            status = glrestore.s3_utils.glacier_status(f)
-
-            if status not in ['glacier-no-restore', 'deep-glacier-no-restore']:
-                logging.info(f"{f} is {status}; skipping")
-                continue
-
-            logging.debug(f"Restoring {f}; status is {status}")
             glrestore.s3_utils.restore_file(f, **self.kwargs)
 
         logging.info(f"Restore commands finished launching")

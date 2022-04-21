@@ -1,5 +1,10 @@
 import boto3
 import logging
+import datetime
+
+import pandas as pd
+
+from collections import defaultdict
 
 def get_boto3_client(**kwargs):
     """
@@ -29,9 +34,11 @@ def get_bucket_key(s3_loc):
 
     return bucket, key
 
-def get_object_storage_class(s3_loc, **kwargs):
+def get_object_storage_class(s3_loc, extra_info=False, **kwargs):
     """
-    Return the storage class of an s3_loc
+    Return the storage class and restoring status of an s3_loc
+
+    If "extra_info", return a dictionary including creation date, last modified date, and size
     """
     client = get_boto3_client(**kwargs)
     bucket, key = get_bucket_key(s3_loc)
@@ -57,7 +64,21 @@ def get_object_storage_class(s3_loc, **kwargs):
         else:
             rclass = 'restored'
 
-    return sclass, rclass
+    if extra_info:
+        retd = {'storage_class':sclass, 'restore_status':rclass}
+        re_header = re['ResponseMetadata']['HTTPHeaders']
+        for name, rname in zip(['LastModified', 'size_bytes'], ['last-modified', 'content-length']):
+            if rname in re_header:
+                val = re_header[rname]
+
+                if name in ['LastModified']:
+                    val = datetime.datetime.strptime(val, "%a, %d %b %Y %H:%M:%S %Z")
+
+                retd[name] = val
+        return retd
+
+    else:
+        return sclass, rclass
 
 def glacier_status(s3_loc, **kwargs):
     """
@@ -87,6 +108,22 @@ def glacier_status(s3_loc, **kwargs):
     else:
         assert rclass == 'restoring'
         return 'glacier-restoring'
+
+def classify_glacier_objects(files, **kwargs):
+    """
+    Classify all files
+    """
+    table = defaultdict(list)
+    for f in files:
+        table['file'].append(f)
+
+        rdic = get_object_storage_class(f, extra_info=True, **kwargs)
+        for n, v in rdic.items():
+            table[n].append(v)
+
+    db = pd.DataFrame(table)
+    db['size_bytes'] = db['size_bytes'].astype(float)
+    return db
 
 def restore_file(f, **kwargs):
     """
