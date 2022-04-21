@@ -72,25 +72,45 @@ def upload_glacierized_file():
 UNIT TESTS
 """
 
-def test_object_glacerized(BTO):
+# def test_object_glacerized(BTO):
+#     """
+#     test the "s3_utils.glacier_status" function
+#     """
+#     upload_glacierized_file()
+#
+#     # Test ability to check non-glacierized file
+#     assert glrestore.s3_utils.glacier_status(BTO.non_glacerized_file_loc) == 'no-glacier'
+#
+#     # Test ability to check glacierized file
+#     assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-no-restore'
+#
+#     # Test ability to recognize *restored* glacierized file
+#     assert glrestore.s3_utils.glacier_status(BTO.restored_file_loc) == 'glacier-restored'
+#
+#     # Test ability to recognize *restoring* glacierized file
+#     cmd = "aws s3api restore-object --bucket sonn-current --key users/mattolm/testing_house/glrestore/N5_271_010G1_scaffold_min1000.fa --restore-request '{\"Days\":1,\"GlacierJobParameters\":{\"Tier\":\"Expedited\"}}'"
+#     subprocess.call(cmd, shell=True)
+#     assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-restoring'
+
+def test_object_glacerized_v2(BTO):
     """
     test the "s3_utils.glacier_status" function
     """
     upload_glacierized_file()
 
     # Test ability to check non-glacierized file
-    assert glrestore.s3_utils.glacier_status(BTO.non_glacerized_file_loc) == 'no-glacier'
+    assert glrestore.s3_utils.glacier_status_v2(BTO.non_glacerized_file_loc) == 'no-glacier'
 
     # Test ability to check glacierized file
-    assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-no-restore'
+    assert glrestore.s3_utils.glacier_status_v2(BTO.glacerized_file_loc) == 'glacier-no-restore'
 
     # Test ability to recognize *restored* glacierized file
-    assert glrestore.s3_utils.glacier_status(BTO.restored_file_loc) == 'glacier-restored'
+    assert glrestore.s3_utils.glacier_status_v2(BTO.restored_file_loc) == 'glacier-restored'
 
     # Test ability to recognize *restoring* glacierized file
     cmd = "aws s3api restore-object --bucket sonn-current --key users/mattolm/testing_house/glrestore/N5_271_010G1_scaffold_min1000.fa --restore-request '{\"Days\":1,\"GlacierJobParameters\":{\"Tier\":\"Expedited\"}}'"
     subprocess.call(cmd, shell=True)
-    assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-restoring'
+    assert glrestore.s3_utils.glacier_status_v2(BTO.glacerized_file_loc) == 'glacier-restoring'
 
 def test_classify_glacier_objects(BTO):
     """
@@ -101,13 +121,12 @@ def test_classify_glacier_objects(BTO):
 
     upload_glacierized_file()
 
-    db = glrestore.s3_utils.classify_glacier_objects(
+    db = glrestore.s3_utils.get_object_storage_class_v2(
         [BTO.non_glacerized_file_loc, BTO.glacerized_file_loc, BTO.restored_file_loc])
 
     assert len(db) == 3
     assert db['storage_class'].value_counts()['GLACIER'] == 2
 
-    print(db)
 
 """
 INTEGRATED TESTS
@@ -127,4 +146,3 @@ def test_glrestore_1(BTO):
 
     # Make sure this file is now being restored
     assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-restoring'
-

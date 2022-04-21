@@ -17,6 +17,7 @@ import argparse
 import logging
 import awswrangler
 
+import pandas as pd
 import glrestore.s3_utils
 
 def main():
@@ -42,11 +43,12 @@ class RestoreController(object):
         """
         self.parse_arguments()
 
-        logging.debug("Figuring out what to restore")
-        self.get_files_to_restore()
-
-        logging.debug("Classifying objects to restore")
-        self.classify_objects()
+        # logging.debug("Figuring out what to restore")
+        # self.get_files_to_restore()
+        #
+        # logging.debug("Classifying objects to restore")
+        # self.classify_objects()
+        self.get_files_to_restore_v2()
 
         logging.debug("Print status")
         self.print_status()
@@ -71,25 +73,39 @@ class RestoreController(object):
             session = boto3.session.Session()
             self.kwargs.client = session.client("s3")
 
-    def get_files_to_restore(self):
+    # def get_files_to_restore(self):
+    #     """
+    #     Return a list of s3 files to restore
+    #     """
+    #     # Get the command line argument
+    #     base_restore = self.kwargs.get('files')
+    #
+    #     FILES_TO_RESTORE = []
+    #     for br in base_restore:
+    #         FILES_TO_RESTORE += awswrangler.s3.list_objects(br)
+    #
+    #     self.files_to_restore = FILES_TO_RESTORE
+
+    def get_files_to_restore_v2(self):
         """
         Return a list of s3 files to restore
         """
         # Get the command line argument
         base_restore = self.kwargs.get('files')
 
-        FILES_TO_RESTORE = []
+        dbs = []
         for br in base_restore:
-            FILES_TO_RESTORE += awswrangler.s3.list_objects(br)
+            db = glrestore.s3_utils.get_object_storage_class_v2([br])
+            dbs.append(db)
 
-        self.files_to_restore = FILES_TO_RESTORE
+        self.file_classifications = pd.concat(dbs).reset_index(drop=True)
 
-    def classify_objects(self):
-        """
-        Return a table listing "file", "size", and "status"
-        """
-        # Run the calculation
-        self.file_classifications = glrestore.s3_utils.classify_glacier_objects(self.files_to_restore, **self.kwargs)
+    # def classify_objects(self):
+    #     """
+    #     Return a table listing "file", "size", and "status"
+    #     """
+    #     # Run the calculation
+    #     self.file_classifications = glrestore.s3_utils.classify_glacier_objects(self.files_to_restore, **self.kwargs)
 
     def print_status(self):
         """
@@ -167,7 +183,7 @@ class RestoreController(object):
         """
         Actually do the file restoring
         """
-        files_to_restore_filtered = self.files_to_restore
+        files_to_restore_filtered = self.files_to_restore_filtered
 
         for f in files_to_restore_filtered:
 
