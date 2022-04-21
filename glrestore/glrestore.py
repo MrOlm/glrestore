@@ -67,6 +67,9 @@ class RestoreController(object):
         # Set up boto3
         if 'profile' in args:
             boto3.setup_default_session(profile_name=args.get('profile'))
+        else:
+            session = boto3.session.Session()
+            self.kwargs.client = session.client("s3")
 
     def get_files_to_restore(self):
         """
