@@ -114,7 +114,7 @@ def test_object_glacerized_v2(BTO):
 
 def test_classify_glacier_objects(BTO):
     """
-    test the "s3_utils.classify_glacier_objects" function
+    test the "s3_utils.classify_glacier_objects" function on individual files
     """
     pd.set_option('display.max_colwidth', None)
     pd.set_option('display.max_columns', None)
@@ -126,6 +126,21 @@ def test_classify_glacier_objects(BTO):
 
     assert len(db) == 3
     assert db['storage_class'].value_counts()['GLACIER'] == 2
+
+def test_classify_glacier_objects_2(BTO):
+    """
+    test the "s3_utils.classify_glacier_objects" function on folders
+    """
+    pd.set_option('display.max_colwidth', None)
+    pd.set_option('display.max_columns', None)
+
+    upload_glacierized_file()
+
+    db = glrestore.s3_utils.get_object_storage_class_v2(
+        's3://sonn-current/users/mattolm/testing_house/glrestore/')
+
+    assert len(db) == 3
+    assert db['storage_class'].value_counts()['GLACIER'] == 3
 
 
 """

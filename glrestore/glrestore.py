@@ -95,7 +95,7 @@ class RestoreController(object):
 
         dbs = []
         for br in base_restore:
-            db = glrestore.s3_utils.get_object_storage_class_v2([br])
+            db = glrestore.s3_utils.get_object_storage_class_v2(br)
             dbs.append(db)
 
         self.file_classifications = pd.concat(dbs).reset_index(drop=True)

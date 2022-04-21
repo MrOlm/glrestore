@@ -87,7 +87,7 @@ def get_object_storage_class_v2(s3_locs, extra_info=False, **kwargs):
 
     If "extra_info", return a dictionary including creation date, last modified date, and size
     """
-    assert type(s3_locs) == type([])
+    #assert type(s3_locs) == type([])
     f2re = awswrangler.s3.describe_objects(s3_locs)
 
     table = defaultdict(list)
