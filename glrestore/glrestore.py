@@ -89,7 +89,7 @@ class RestoreController(object):
         Return a table listing "file", "size", and "status"
         """
         # Run the calculation
-        self.file_classifications = glrestore.s3_utils.classify_glacier_objects(self.files_to_restore)
+        self.file_classifications = glrestore.s3_utils.classify_glacier_objects(self.files_to_restore, **self.kwargs)
 
     def print_status(self):
         """
