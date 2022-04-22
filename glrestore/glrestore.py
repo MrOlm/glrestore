@@ -157,7 +157,7 @@ class RestoreController(object):
         tier = self.kwargs.get('speed')
 
         # 1) Calculate the cost for the extra storage
-        storage_cost = size_obs * self.kwargs.get('days')
+        storage_cost = size_obs * (self.kwargs.get('days') / 30) * S3_COST_PER_GB_PER_MONTH
 
         # 2) Calculate the cost for the retrival costs
         t2cs = {}
