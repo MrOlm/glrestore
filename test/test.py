@@ -161,3 +161,17 @@ def test_glrestore_1(BTO):
 
     # Make sure this file is now being restored
     assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-restoring'
+
+def test_glstatus_1(BTO):
+    """
+    A simple test of glstatus
+    """
+    outloc = f"{BTO.test_dir}files.csv"
+    cmd = f"glrestore -f s3://sonn-current/users/mattolm/testing_house/glrestore/ --report -o {outloc}"
+    print(cmd)
+
+    run_glrestore(cmd)
+
+    # Load the report
+    cdb = pd.read_csv(outloc)
+    assert len(cdb) == 3

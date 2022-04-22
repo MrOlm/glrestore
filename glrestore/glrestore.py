@@ -43,18 +43,24 @@ class RestoreController(object):
         """
         self.parse_arguments()
 
-        # logging.debug("Figuring out what to restore")
-        # self.get_files_to_restore()
-        #
-        # logging.debug("Classifying objects to restore")
-        # self.classify_objects()
+        logging.debug("Get objects to restore")
         self.get_files_to_restore_v2()
 
-        logging.debug("Print status")
-        self.print_status()
+        if self.kwargs.get('report', True):
+            logging.info("\n!!!!!!!!!!!\nWill NOT RESTORE anything because of --report flag; the following information is FYI only\n!!!!!!!!!!!!")
 
-        logging.debug("Restoring files")
-        self.restore_files()
+            logging.debug("Print status")
+            self.print_status(sleep=False)
+
+            logging.debug("Create report")
+            self.create_report()
+
+        else:
+            logging.debug("Print status")
+            self.print_status()
+
+            logging.debug("Restoring files")
+            self.restore_files()
 
 
     def parse_arguments(self):
@@ -73,19 +79,6 @@ class RestoreController(object):
             session = boto3.session.Session()
             self.kwargs.client = session.client("s3")
 
-    # def get_files_to_restore(self):
-    #     """
-    #     Return a list of s3 files to restore
-    #     """
-    #     # Get the command line argument
-    #     base_restore = self.kwargs.get('files')
-    #
-    #     FILES_TO_RESTORE = []
-    #     for br in base_restore:
-    #         FILES_TO_RESTORE += awswrangler.s3.list_objects(br)
-    #
-    #     self.files_to_restore = FILES_TO_RESTORE
-
     def get_files_to_restore_v2(self):
         """
         Return a list of s3 files to restore
@@ -100,14 +93,7 @@ class RestoreController(object):
 
         self.file_classifications = pd.concat(dbs).reset_index(drop=True)
 
-    # def classify_objects(self):
-    #     """
-    #     Return a table listing "file", "size", and "status"
-    #     """
-    #     # Run the calculation
-    #     self.file_classifications = glrestore.s3_utils.classify_glacier_objects(self.files_to_restore, **self.kwargs)
-
-    def print_status(self):
+    def print_status(self, sleep=True):
         """
         Print status and estimated costs
         """
@@ -125,7 +111,7 @@ class RestoreController(object):
         fcdb = cdb[(cdb['restore_status'] == False) & (cdb['storage_class'].isin(['GLACIER', 'DEEP_ARCHIVE']))]
         logging.info(f"Restoring the remaining {len(fcdb)} objects will cost the following:")
 
-        self.display_restore_costs(fcdb)
+        self.display_restore_costs(fcdb, sleep=sleep)
 
         self.files_to_restore_filtered = fcdb['file'].tolist()
 
@@ -133,7 +119,20 @@ class RestoreController(object):
             for f in fcdb['file'].tolist():
                 logging.debug(f)
 
-    def display_restore_costs(self, fcdb):
+    def create_report(self):
+        """
+        Create a report instead of actually restoring anything
+        """
+        outloc = self.kwargs.get('output')
+        if not outloc.endswith('.csv'):
+            outloc += '.csv'
+
+        cdb = self.file_classifications
+        logging.info(f"Identified {len(cdb)} files. Will create a report on them at {outloc}")
+        cdb.to_csv(outloc, index=False)
+
+
+    def display_restore_costs(self, fcdb, sleep=True):
         """
         Print how much this is going to cost
 
@@ -155,6 +154,7 @@ class RestoreController(object):
         # 0) Calculate the size and number of objects to restore
         num_obs = len(fcdb)
         size_obs = sum(fcdb['size_bytes']) / 1e9
+        tier = self.kwargs.get('speed')
 
         # 1) Calculate the cost for the extra storage
         storage_cost = size_obs * self.kwargs.get('days')
@@ -166,18 +166,21 @@ class RestoreController(object):
 
         # Display this info
         msg = "\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n"
-        msg += f"It will cost ${storage_cost:.2f} to restore the {size_obs:.3f}GB of data for {self.kwargs.get('days')} days\n"
+        msg += f"It will cost ${storage_cost:.2f} to restore the {size_obs:.3f}GB of data for {self.kwargs.get('days')} days"
 
         msg += '\n'
         msg += f"Additionally it will cost the following to restore {num_obs} objects totalling {size_obs:.2f}GB:\n"
         for t, d in t2cs.items():
-            msg += f"{t}: ${d[0]:.2f} + ${d[1]:.2f}\n"
-        msg += "\n"
-        msg += f"You chose to restore at {self.kwargs.get('speed')} speed. Please quit the program now (ctrl + c) if you'd like to change that! I'll wait 5 seconds"
+            msg += f"\t{t}: ${d[0]:.2f} + ${d[1]:.2f}\n"
+        msg += f"YOUR TOTAL COST, AT {tier} SPEED, WILL BE ${storage_cost + sum(t2cs[tier]):0.2f}"
+
+        if sleep:
+            msg += f"You chose to restore at {tier} speed. Please quit the program now (ctrl + c) if you'd like to change that! I'll wait 5 seconds"
         msg += "\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n"
 
         logging.info(msg)
-        time.sleep(5)
+        if sleep:
+            time.sleep(5)
 
     def restore_files(self):
         """
@@ -246,9 +249,20 @@ def parse_args():
         help="AWS credential profile to use. Will use default by default")
 
     parser.add_argument(
+        '--report',
+        help='Rather than actually doing anything, just make a report of which files are matched by the -f argument and what their status is. Will make a file with this info based on the name in the -o argument',
+        default=False, action="store_true")
+
+    parser.add_argument(
+        '-o', '--output',
+        help='Where to store the --report information',
+        default='glrestore_report.txt')
+
+    parser.add_argument(
         '--debug',
         help='Create debugging log file',
         default=False, action= "store_true")
+
     parser.add_argument(
         "--version",
         action="version",
