@@ -11,6 +11,8 @@ import importlib
 import logging
 import subprocess
 import pandas as pd
+from time import sleep
+from threading import Thread
 
 import glrestore
 import glrestore.s3_utils
@@ -49,7 +51,9 @@ def BTO():
     self.non_glacerized_file_loc = "s3://sonn-highavail/testing/ng_N5_271_010G1_scaffold_min1000.fa"
     self.restored_file_loc = "s3://sonn-current/users/mattolm/testing_house/glrestore/rest_N5_271_010G1_scaffold_min1000.fa"
 
-    self.test_dir =  os.path.join(str(os.getcwd()), 'temp_testdir/')
+    self.glacerized_file_list = os.path.join(str(os.getcwd()), 'testfiles/glacerizedfile.txt')
+
+    self.test_dir = os.path.join(str(os.getcwd()), 'temp_testdir/')
 
     self.teardown()
     yield self
@@ -71,26 +75,6 @@ def upload_glacierized_file():
 """
 UNIT TESTS
 """
-
-# def test_object_glacerized(BTO):
-#     """
-#     test the "s3_utils.glacier_status" function
-#     """
-#     upload_glacierized_file()
-#
-#     # Test ability to check non-glacierized file
-#     assert glrestore.s3_utils.glacier_status(BTO.non_glacerized_file_loc) == 'no-glacier'
-#
-#     # Test ability to check glacierized file
-#     assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-no-restore'
-#
-#     # Test ability to recognize *restored* glacierized file
-#     assert glrestore.s3_utils.glacier_status(BTO.restored_file_loc) == 'glacier-restored'
-#
-#     # Test ability to recognize *restoring* glacierized file
-#     cmd = "aws s3api restore-object --bucket sonn-current --key users/mattolm/testing_house/glrestore/N5_271_010G1_scaffold_min1000.fa --restore-request '{\"Days\":1,\"GlacierJobParameters\":{\"Tier\":\"Expedited\"}}'"
-#     subprocess.call(cmd, shell=True)
-#     assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-restoring'
 
 def test_object_glacerized_v2(BTO):
     """
@@ -154,13 +138,50 @@ def test_glrestore_1(BTO):
     upload_glacierized_file()
 
     # Make sure this file starts off glacierized
-    assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-no-restore'
+    assert glrestore.s3_utils.glacier_status_v2(BTO.glacerized_file_loc) == 'glacier-no-restore'
 
     cmd = f"glrestore -f {BTO.glacerized_file_loc} --debug"
     run_glrestore(cmd)
 
     # Make sure this file is now being restored
-    assert glrestore.s3_utils.glacier_status(BTO.glacerized_file_loc) == 'glacier-restoring'
+    assert glrestore.s3_utils.glacier_status_v2(BTO.glacerized_file_loc) == 'glacier-restoring'
+
+def test_glrestore_2(BTO):
+    """
+    A simple test restoring a single object to new location based on a list of files
+    """
+    upload_glacierized_file()
+
+    # Make sure this file starts off glacierized
+    assert glrestore.s3_utils.glacier_status_v2(BTO.glacerized_file_loc) == 'glacier-no-restore'
+
+    cmd = f"glrestore -f {BTO.glacerized_file_list} --debug"
+    run_glrestore(cmd)
+
+    # Make sure this file is now being restored
+    assert glrestore.s3_utils.glacier_status_v2(BTO.glacerized_file_loc) == 'glacier-restoring'
+
+def test_glrestore_3(BTO):
+    """
+    Test the "--wait" functionality
+    """
+    upload_glacierized_file()
+
+    # Make sure this file starts off glacierized
+    assert glrestore.s3_utils.glacier_status_v2(BTO.glacerized_file_loc) == 'glacier-no-restore'
+
+    # Make sure this takes longer than 30 seconds to finish
+    t = Thread(target=threaded_restore, args=(BTO.glacerized_file_loc,))  # run the some_task function in another
+    t.daemon = True
+    t.start()
+
+    sleep(30)
+
+    # Make sure this file is now being restored
+    assert glrestore.s3_utils.glacier_status_v2(BTO.glacerized_file_loc) == 'glacier-restoring'
+
+    # Make sure the program is still running
+    assert t.is_alive()
 
 def test_glstatus_1(BTO):
     """
@@ -175,3 +196,10 @@ def test_glstatus_1(BTO):
     # Load the report
     cdb = pd.read_csv(outloc)
     assert len(cdb) == 3
+
+def threaded_restore(f):
+    """
+    Something to thread when testing the wait
+    """
+    cmd = f"glrestore -f {f} --wait"
+    run_glrestore(cmd)

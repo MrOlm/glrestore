@@ -16,6 +16,7 @@ import copy
 import argparse
 import logging
 import awswrangler
+from time import sleep
 
 import pandas as pd
 import glrestore.s3_utils
@@ -44,7 +45,7 @@ class RestoreController(object):
         self.parse_arguments()
 
         logging.debug("Get objects to restore")
-        self.get_files_to_restore_v2()
+        self.file_classifications = self.get_files_to_restore_v2(self.kwargs.get('files'))
 
         if self.kwargs.get('report', True):
             logging.info("\n!!!!!!!!!!!\nWill NOT RESTORE anything because of --report flag; the following information is FYI only\n!!!!!!!!!!!!")
@@ -61,6 +62,9 @@ class RestoreController(object):
 
             logging.debug("Restoring files")
             self.restore_files()
+
+        if self.kwargs.get('wait'):
+            self.wait_for_restore()
 
 
     def parse_arguments(self):
@@ -79,19 +83,33 @@ class RestoreController(object):
             session = boto3.session.Session()
             self.kwargs.client = session.client("s3")
 
-    def get_files_to_restore_v2(self):
+    def get_files_to_restore_v2(self, files):
         """
         Return a list of s3 files to restore
         """
         # Get the command line argument
-        base_restore = self.kwargs.get('files')
+        base_restore = files
+
+        # Load files if need be
+        to_restore = []
+        for br in base_restore:
+            if not br.startswith('s3://'):
+                with open(br, 'r') as r:
+                    for line in r.readlines():
+                        if not line.startswith('s3://'):
+                            logging.error(f"CRITICAL ERROR! You passed {br} to -f, which doesn't start with s3://. I assumed this was a file of files to restore, but the line {line} also doesn't start with s3://. Will ignore {br} and {line}")
+                        else:
+                            to_restore.append(line.strip())
+            else:
+                to_restore.append(br)
 
         dbs = []
-        for br in base_restore:
+        for br in to_restore:
             db = glrestore.s3_utils.get_object_storage_class_v2(br)
             dbs.append(db)
 
-        self.file_classifications = pd.concat(dbs).reset_index(drop=True)
+        fc = pd.concat(dbs).reset_index(drop=True)
+        return fc
 
     def print_status(self, sleep=True):
         """
@@ -161,18 +179,19 @@ class RestoreController(object):
 
         # 2) Calculate the cost for the retrival costs
         t2cs = {}
-        for tier in ['Expedited', 'Standard', 'Bulk']:
-            t2cs[tier] = [(num_obs / 1000) * TIER2REQUEST2COST[tier], size_obs * TIER2REQUEST2SIZE_COST[tier]]
+        for t in ['Expedited', 'Standard', 'Bulk']:
+            t2cs[t] = [(num_obs / 1000) * TIER2REQUEST2COST[t], size_obs * TIER2REQUEST2SIZE_COST[t]]
 
         # Display this info
         msg = "\n$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n"
-        msg += f"It will cost ${storage_cost:.2f} to restore the {size_obs:.3f}GB of data for {self.kwargs.get('days')} days"
 
-        msg += '\n'
-        msg += f"Additionally it will cost the following to restore {num_obs} objects totalling {size_obs:.2f}GB:\n"
+        msg += f"It will cost the following to restore {num_obs} objects totalling {size_obs:.2f}GB:\n"
         for t, d in t2cs.items():
             msg += f"\t{t}: ${d[0]:.2f} + ${d[1]:.2f}\n"
-        msg += f"YOUR TOTAL COST, AT {tier} SPEED, WILL BE ${storage_cost + sum(t2cs[tier]):0.2f}"
+
+        msg += f"It will also cost ${storage_cost:.2f} to restore the {size_obs:.3f}GB of data for {self.kwargs.get('days')} days"
+        msg += '\n----------------------------\n'
+        msg += f"Your TOTAL COST at {tier} speed will be ${storage_cost + sum(t2cs[tier]):0.2f}\n"
 
         if sleep:
             msg += f"You chose to restore at {tier} speed. Please quit the program now (ctrl + c) if you'd like to change that! I'll wait 5 seconds"
@@ -193,6 +212,33 @@ class RestoreController(object):
             glrestore.s3_utils.restore_file(f, **self.kwargs)
 
         logging.info(f"Restore commands finished launching")
+
+    def wait_for_restore(self):
+        """
+        Enter the loop where you wait for objects to restore before exiting the program
+        """
+        remaining = self.files_to_restore_filtered
+        print(f"I am going to wait for {len(remaining)} files to be restored")
+
+        start = time.time()
+        while True:
+            sleep(5)
+
+            cdb = self.get_files_to_restore_v2(remaining)
+            remaining = cdb[(cdb['restore_status'] == "restoring")]['file'].tolist()
+
+            if len(remaining) == 0:
+                break
+
+            elapsed = time.time() - start
+
+            sys.stdout.write('\r')
+            # the exact output you're looking for:
+            sys.stdout.write(f'Ive been waiting for {time.strftime("%Hh%Mm%Ss", time.gmtime(elapsed))}: {len(remaining)} files remain')
+            sys.stdout.flush()
+
+        elapsed = time.time() - start
+        print(f'All done! The restore took {time.strftime("%Hh%Mm%Ss", time.gmtime(elapsed))}')
 
     def setup_log(self):
         args = self.kwargs
@@ -231,7 +277,7 @@ def parse_args():
 
     parser.add_argument(
         '-f', '--files',
-        help="File or files to be restored. Can include wildcards. Must start with the bucket in the format (s3://)",
+        help="File or files to be restored (or a list of files). Can include wildcards. Must start with the bucket in the format (s3://)",
         nargs='*', default=[])
 
     parser.add_argument(
@@ -257,6 +303,11 @@ def parse_args():
         '-o', '--output',
         help='Where to store the --report information',
         default='glrestore_report.txt')
+
+    parser.add_argument(
+        '--wait',
+        help='Wait for restore to finish before exiting the program. Works with --report too',
+        default=False, action="store_true")
 
     parser.add_argument(
         '--debug',

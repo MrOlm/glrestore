@@ -1,0 +1,1 @@
+s3://sonn-current/users/mattolm/testing_house/glrestore/N5_271_010G1_scaffold_min1000.fa
