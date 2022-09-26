@@ -192,6 +192,7 @@ class RestoreController(object):
         msg += f"It will also cost ${storage_cost:.2f} to restore the {size_obs:.3f}GB of data for {self.kwargs.get('days')} days"
         msg += '\n----------------------------\n'
         msg += f"Your TOTAL COST at {tier} speed will be ${storage_cost + sum(t2cs[tier]):0.2f}\n"
+        msg += '\n----------------------------\n'
 
         if sleep:
             msg += f"You chose to restore at {tier} speed. Please quit the program now (ctrl + c) if you'd like to change that! I'll wait 5 seconds"
@@ -222,7 +223,7 @@ class RestoreController(object):
 
         start = time.time()
         while True:
-            sleep(5)
+            sleep(300)
 
             cdb = self.get_files_to_restore_v2(remaining)
             remaining = cdb[(cdb['restore_status'] == "restoring")]['file'].tolist()
